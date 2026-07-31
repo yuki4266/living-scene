@@ -1,0 +1,39 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: python -m unittest -v
+
+  action:
+    # proves the composite action itself resolves and runs, without pushing
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./
+        with:
+          weather: storm
+          season: winter
+          out-dir: /tmp/scene
+          state: /tmp/scene/state
+          commit: "false"
+      - run: |
+          for f in sky.svg sky-night.svg garden-footer.svg garden-footer-night.svg; do
+            test -s "/tmp/scene/$f" || { echo "missing $f"; exit 1; }
+          done
+          echo "all four SVGs rendered"

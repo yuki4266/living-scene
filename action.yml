@@ -1,0 +1,106 @@
+name: Living Scene
+description: Render a weather-synced animated SVG sky and seasonal garden footer for your GitHub profile README.
+author: yuki4266
+
+branding:
+  icon: cloud-drizzle
+  color: orange
+
+inputs:
+  lat:
+    description: Latitude used for the Open-Meteo weather lookup.
+    required: false
+    default: "40.7128"
+  lon:
+    description: Longitude used for the Open-Meteo weather lookup.
+    required: false
+    default: "-74.0060"
+  tz:
+    description: IANA timezone name used to decide the current season.
+    required: false
+    default: America/New_York
+  hemisphere:
+    description: "north or south — flips the season mapping."
+    required: false
+    default: north
+  weather:
+    description: Pin the weather (clear/clouds/rain/snow/fog/storm) instead of calling the API.
+    required: false
+    default: ""
+  season:
+    description: Pin the season (spring/summer/autumn/winter) instead of deriving it from the date.
+    required: false
+    default: ""
+  out-dir:
+    description: Directory the four SVGs are written to.
+    required: false
+    default: "."
+  state:
+    description: File that records the last rendered scene so unchanged runs make no commit.
+    required: false
+    default: .github/scene-state
+  force:
+    description: Re-render even when the scene has not changed.
+    required: false
+    default: "false"
+  commit:
+    description: Commit and push the regenerated SVGs when they change.
+    required: false
+    default: "true"
+  commit-message:
+    description: Commit message. "{state}" is replaced with e.g. rain-autumn.
+    required: false
+    default: "scene sync: {state}"
+
+outputs:
+  state:
+    description: The rendered scene, e.g. "rain-autumn".
+    value: ${{ steps.render.outputs.state }}
+  changed:
+    description: "true when the SVGs were regenerated."
+    value: ${{ steps.render.outputs.changed }}
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+
+    - id: render
+      shell: bash
+      # inputs travel as env, never interpolated into the script body, so a
+      # value like `; rm -rf /` is data rather than shell
+      env:
+        SCENE_LAT: ${{ inputs.lat }}
+        SCENE_LON: ${{ inputs.lon }}
+        SCENE_TZ: ${{ inputs.tz }}
+        SCENE_HEMISPHERE: ${{ inputs.hemisphere }}
+        SCENE_OUT_DIR: ${{ inputs.out-dir }}
+        SCENE_STATE: ${{ inputs.state }}
+        WEATHER: ${{ inputs.weather }}
+        SEASON: ${{ inputs.season }}
+        FORCE: ${{ inputs.force }}
+      run: |
+        args=()
+        if [[ -n "$WEATHER" ]]; then args+=(--weather "$WEATHER"); fi
+        if [[ -n "$SEASON"  ]]; then args+=(--season  "$SEASON");  fi
+        if [[ "$FORCE" == "true" ]]; then args+=(--force); fi
+        python3 "${{ github.action_path }}/gen_scene.py" "${args[@]}"
+
+    - if: inputs.commit == 'true' && steps.render.outputs.changed == 'true'
+      shell: bash
+      env:
+        COMMIT_MESSAGE: ${{ inputs.commit-message }}
+        SCENE_RESULT: ${{ steps.render.outputs.state }}
+      run: |
+        if git diff --quiet && git diff --cached --quiet; then
+          echo "no file changes to commit"
+          exit 0
+        fi
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git add -A
+        git commit -m "${COMMIT_MESSAGE//\{state\}/$SCENE_RESULT}"
+        git pull --rebase
+        git push

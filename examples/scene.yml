@@ -1,0 +1,26 @@
+# Copy this to .github/workflows/scene.yml in your profile repo
+# (the repository named after your GitHub username).
+name: Living scene
+
+on:
+  schedule:
+    # every three hours, at :23 past — off the hour, because scheduled runs
+    # at :00 queue behind everyone else's cron and get delayed
+    - cron: "23 */3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  scene:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: yuki4266/living-scene@v1
+        with:
+          lat: "35.99"
+          lon: "-78.90"
+          tz: America/New_York
+          # hemisphere: south   # uncomment below the equator
