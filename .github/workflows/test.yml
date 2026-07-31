@@ -37,3 +37,34 @@ jobs:
             test -s "/tmp/scene/$f" || { echo "missing $f"; exit 1; }
           done
           echo "all four SVGs rendered"
+
+  commit-path:
+    # exercises the commit+push branch against a throwaway local remote, so a
+    # first run into a repo that has no SVGs yet is covered
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Redirect origin to a bare clone on disk
+        run: |
+          git init -q --bare /tmp/remote.git
+          git remote set-url origin /tmp/remote.git
+          git push -q origin "HEAD:${{ github.ref_name }}"
+
+      - uses: ./
+        with:
+          weather: snow
+          season: winter
+          commit: "true"
+          commit-message: "test scene: {state}"
+
+      - name: The four SVGs should have been committed
+        run: |
+          git log --oneline -1
+          subject=$(git log -1 --pretty=%s)
+          [[ "$subject" == "test scene: snow-winter" ]] || { echo "unexpected: $subject"; exit 1; }
+          for f in sky.svg sky-night.svg garden-footer.svg garden-footer-night.svg; do
+            git show --stat --oneline HEAD | grep -q "$f" || { echo "$f not in commit"; exit 1; }
+          done
+          git -C /tmp/remote.git log --oneline -1 | grep -q "test scene" || { echo "not pushed"; exit 1; }
+          echo "commit and push path verified"

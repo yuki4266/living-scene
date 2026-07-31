@@ -93,8 +93,11 @@ runs:
       env:
         COMMIT_MESSAGE: ${{ inputs.commit-message }}
         SCENE_RESULT: ${{ steps.render.outputs.state }}
+        BRANCH: ${{ github.ref_name }}
       run: |
-        if git diff --quiet && git diff --cached --quiet; then
+        # --porcelain, not `git diff`, so a first run that creates the SVGs for
+        # the first time is not mistaken for "nothing changed"
+        if [ -z "$(git status --porcelain)" ]; then
           echo "no file changes to commit"
           exit 0
         fi
@@ -102,5 +105,7 @@ runs:
         git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
         git add -A
         git commit -m "${COMMIT_MESSAGE//\{state\}/$SCENE_RESULT}"
-        git pull --rebase
-        git push
+        # actions/checkout leaves the branch without upstream tracking, so the
+        # remote and ref are named explicitly rather than relying on a default
+        git pull --rebase origin "$BRANCH"
+        git push origin "HEAD:$BRANCH"
