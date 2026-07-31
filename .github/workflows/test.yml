@@ -68,5 +68,7 @@ jobs:
           for f in sky.svg sky-night.svg garden-footer.svg garden-footer-night.svg; do
             git show --stat --oneline HEAD | grep -q "$f" || { echo "$f not in commit"; exit 1; }
           done
-          git -C /tmp/remote.git log --oneline -1 | grep -q "test scene" || { echo "not pushed"; exit 1; }
+          # name the ref: a bare repo's HEAD defaults to master, not main
+          git -C /tmp/remote.git log --oneline -1 "${{ github.ref_name }}" \
+            | grep -q "test scene" || { echo "not pushed"; exit 1; }
           echo "commit and push path verified"
