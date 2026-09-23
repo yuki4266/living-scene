@@ -24,3 +24,5 @@ jobs:
           lon: "-78.90"
           tz: America/New_York
           # hemisphere: south   # uncomment below the equator
+          header: header.svg    # your banner, with a <!--WEATHER--><!--/WEATHER--> block
+          sky: "false"          # drop this line to get the standalone sky strip instead

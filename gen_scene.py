@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Living scene: weather-synced sky strip + seasonal garden footer, day & night variants.
+"""Living scene: weather painted into your banner (or a sky strip) + seasonal garden footer, day & night.
 Runs in CI every few hours. Deterministic per (weather, season) so unchanged state = no diff.
 
 Point it at your own coordinates:
@@ -7,6 +7,9 @@ Point it at your own coordinates:
 
 Pin a scene to preview it without calling the weather API:
     gen_scene.py --weather snow --season winter --force
+
+Paint the weather into your own banner instead of the strip:
+    gen_scene.py --header bloom-header.svg --skip-sky
 """
 import argparse
 import json
@@ -577,6 +580,223 @@ def gen_sky(w, s):
     return day, night
 
 
+# ---------------- header mode: paint the weather into your own banner ----------------
+# Any SVG with a <!--WEATHER--><!--/WEATHER--> block gets the live weather painted
+# between the markers, in a palette tuned to sit on GitHub's white; a night variant
+# is derived from it (NIGHT_MAP colours, dark clouds, stars, moon). Layouts are
+# designed for a 900x300 canvas and scaled to whatever viewBox the file declares.
+HEADER_W, HEADER_H = 900, 300
+MARK = re.compile(r"<!--WEATHER[^>]*-->.*?<!--/WEATHER-->", re.S)
+HEADER_PAL = {
+    "day": dict(
+        sun_glow="#FFD9A0", sun="#FFC069", sun_hi="#FFE3B8",
+        cloud=("#EFE4DE", "#D9C9C1"), cloud_rain=("#DBD8E5", "#BDB7CE"),
+        cloud_snow=("#E7E9F0", "#CBD0DD"), cloud_storm=("#B9B4C7", "#8F88A5"),
+        rain="#A9BAD1", rain_heavy="#96A9C4", snow="#C4D2E0", snow_big="#B9C9DA",
+        fog="#C9D1DC", flash="#FFF1C2", bolt="#FFD98A",
+        leaf=("#C46A38", "#D98E4A", "#B57B3F"),
+    ),
+    "night": dict(
+        moon="#F2E6C4", firefly="#FFD98A",
+        cloud=("#3D465C", "#2B3245"), cloud_rain=("#363C51", "#262B3C"),
+        cloud_snow=("#3F475B", "#2F3648"), cloud_storm=("#2F3447", "#1F2331"),
+        rain="#6F84A6", rain_heavy="#7B90B2", snow="#E9F0F8", snow_big="#DCE7F2",
+        fog="#7C89A0", flash="#C9D6FF", bolt="#E6EDFF",
+        leaf=("#8F5230", "#9C6C3E", "#7E5A34"),
+    ),
+}
+HEADER_CLOUDS = {
+    # x, y, scale, opacity, sway, dur, begin — clouds hover in place so the
+    # composition stays balanced whenever you look; the last "clouds" one sits on the sun
+    "clouds": [(215, 58, 0.80, 0.95, 26, 34, -6), (455, 40, 1.00, 1.0, 34, 46, -20),
+               (690, 62, 0.62, 0.85, 22, 30, -11), (812, 60, 0.70, 0.95, 18, 40, -3)],
+    "rain":   [(200, 54, 0.95, 1.0, 20, 38, -5), (450, 36, 1.15, 1.0, 26, 50, -21),
+               (690, 58, 0.85, 0.95, 18, 42, -13), (860, 44, 0.75, 0.9, 16, 36, -9)],
+    "snow":   [(240, 50, 0.90, 0.9, 22, 44, -8), (520, 34, 1.05, 0.9, 26, 52, -25),
+               (790, 52, 0.80, 0.85, 20, 40, -14)],
+    "storm":  [(170, 50, 1.05, 1.0, 16, 30, -4), (420, 32, 1.30, 1.0, 20, 40, -18),
+               (660, 56, 1.00, 1.0, 14, 34, -10), (860, 40, 0.85, 0.95, 12, 28, -7)],
+}
+HEADER_FOG = [  # cx, cy, rx, ry, opacity, sway, dur, begin — mist pools low, a thin haze up high
+    (230, 268, 300, 20, 0.55, 40, 36, -5), (620, 280, 340, 22, 0.5, 50, 44, -20),
+    (450, 298, 470, 16, 0.6, 36, 40, -12), (120, 244, 200, 12, 0.35, 30, 32, -8),
+    (770, 240, 210, 12, 0.35, 34, 38, -15),
+    (330, 80, 300, 13, 0.28, 60, 52, -18), (700, 102, 240, 11, 0.22, 46, 48, -30),
+]
+
+
+def header_sun(p, op=1.0):
+    rays = "".join(f'<path d="M0 -15 L2.1 -23 L-2.1 -23 Z" fill="{p["sun"]}" transform="rotate({a})"/>' for a in range(0, 360, 45))
+    return (f'<g transform="translate(846,38)" opacity="{op}">'
+            f'<circle r="26" fill="{p["sun_glow"]}" opacity="0.16"><animate attributeName="opacity" values="0.1;0.22;0.1" keyTimes="0;0.5;1" dur="6s" repeatCount="indefinite"/></circle>'
+            f'<circle r="17" fill="{p["sun_glow"]}" opacity="0.28"/>'
+            f'<g opacity="0.7"><animateTransform attributeName="transform" type="rotate" from="0" to="360" dur="90s" repeatCount="indefinite"/>{rays}</g>'
+            f'<circle r="9.5" fill="{p["sun"]}"/><circle r="9.5" fill="{p["sun_hi"]}" opacity="0.5"/></g>')
+
+
+def header_moon(p, op=1.0):
+    return (f'<g transform="translate(846,36)" opacity="{op}">'
+            '<mask id="nightmoon"><rect x="-22" y="-22" width="44" height="44" fill="white"/><circle cx="7" cy="-4" r="13" fill="black"/></mask>'
+            f'<circle r="24" fill="{p["moon"]}" opacity="0.1"><animate attributeName="opacity" values="0.07;0.16;0.07" keyTimes="0;0.5;1" dur="6s" repeatCount="indefinite"/></circle>'
+            f'<circle r="15" fill="{p["moon"]}" opacity="0.92" mask="url(#nightmoon)"/></g>')
+
+
+def header_cloud(x, y, sc, cols, op, sway, dur, beg):
+    """A puffy cloud: a pill with three bumps. Group opacity keeps the overlaps flat."""
+    body, shade = cols
+    return (f'<g transform="translate({x},{y})"><g opacity="{op}">'
+            f'<animateTransform attributeName="transform" type="translate" values="{-sway} 0;{sway} 3;{-sway} 0" {SPLINE2} dur="{dur}s" begin="{beg}s" repeatCount="indefinite"/>'
+            f'<g transform="scale({sc})" fill="{body}">'
+            '<rect x="-52" y="-8" width="104" height="22" rx="11"/>'
+            '<circle cx="-24" cy="-10" r="17"/><circle cx="2" cy="-20" r="23"/><circle cx="27" cy="-9" r="18"/>'
+            f'<ellipse cx="0" cy="10" rx="46" ry="4" fill="{shade}" opacity="0.45"/>'
+            '</g></g></g>')
+
+
+def header_fade_mask():
+    # drops appear below the cloud band and thin out at the soil line
+    return ('<linearGradient id="wx-fade-g" x1="0" y1="0" x2="0" y2="1">'
+            '<stop offset="0.14" stop-color="#fff" stop-opacity="0"/><stop offset="0.32" stop-color="#fff" stop-opacity="1"/>'
+            '<stop offset="0.84" stop-color="#fff" stop-opacity="1"/><stop offset="1" stop-color="#fff" stop-opacity="0.2"/></linearGradient>'
+            f'<mask id="wx-fade" maskUnits="userSpaceOnUse" x="0" y="0" width="{HEADER_W}" height="{HEADER_H}">'
+            f'<rect width="{HEADER_W}" height="{HEADER_H}" fill="url(#wx-fade-g)"/></mask>')
+
+
+def header_rain(rnd, col, n, width, slant, length, speed, op):
+    out = []
+    for _ in range(n):
+        x, dur = rnd.uniform(0, HEADER_W), rnd.uniform(*speed)
+        out.append(f'<g><animateTransform attributeName="transform" type="translate" values="0 0;0 {HEADER_H + 40}" dur="{dur:.2f}s" begin="{-rnd.uniform(0, dur):.2f}s" repeatCount="indefinite"/>'
+                   f'<line x1="{x:.0f}" y1="{-length}" x2="{x - slant:.0f}" y2="0" stroke="{col}" stroke-width="{width}" stroke-linecap="round"/></g>')
+    return f'<g mask="url(#wx-fade)" opacity="{op}">' + "".join(out) + "</g>"
+
+
+def header_snow(rnd, p):
+    def fall(dx, dur):
+        return (f'<animateTransform attributeName="transform" type="translate" values="0 -12;{dx:.0f} 100;{-dx:.0f} 205;{dx * 0.5:.0f} 318" '
+                f'keyTimes="0;0.33;0.66;1" calcMode="spline" keySplines="0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1" dur="{dur:.1f}s" begin="{-rnd.uniform(0, dur):.1f}s" repeatCount="indefinite"/>')
+    out = []
+    for _ in range(28):
+        x, dx, dur = rnd.uniform(0, HEADER_W), rnd.choice([-1, 1]) * rnd.uniform(8, 18), rnd.uniform(9, 15)
+        out.append(f'<g>{fall(dx, dur)}<circle cx="{x:.0f}" cy="0" r="{rnd.uniform(1.3, 2.6):.1f}" fill="{p["snow"]}" opacity="{rnd.uniform(0.6, 0.95):.2f}"/></g>')
+    for _ in range(4):
+        x, s = rnd.uniform(20, HEADER_W - 20), rnd.uniform(2.8, 4.2)
+        dx, dur = rnd.choice([-1, 1]) * rnd.uniform(10, 20), rnd.uniform(11, 16)
+        arms = "".join(f'<line x1="0" y1="{-s:.1f}" x2="0" y2="{s:.1f}" transform="rotate({a})"/>' for a in (0, 60, 120))
+        out.append(f'<g>{fall(dx, dur)}<g transform="translate({x:.0f},0)"><g stroke="{p["snow_big"]}" stroke-width="1.1" stroke-linecap="round" opacity="0.9">'
+                   f'<animateTransform attributeName="transform" type="rotate" from="0" to="360" dur="{dur:.1f}s" repeatCount="indefinite"/>{arms}</g></g></g>')
+    return "".join(out)
+
+
+def header_fog(col):
+    """Wide, heavily blurred ellipses read as mist; crisp bars read as bars."""
+    out = ['<filter id="wx-blur" x="-20%" y="-300%" width="140%" height="700%"><feGaussianBlur stdDeviation="16"/></filter>']
+    for (cx, cy, rx, ry, op, sway, dur, beg) in HEADER_FOG:
+        out.append(f'<ellipse cx="{cx}" cy="{cy}" rx="{rx}" ry="{ry}" fill="{col}" opacity="{op}" filter="url(#wx-blur)">'
+                   f'<animateTransform attributeName="transform" type="translate" values="{-sway} 0;{sway} 0;{-sway} 0" {SPLINE2} dur="{dur}s" begin="{beg}s" repeatCount="indefinite"/></ellipse>')
+    return "".join(out)
+
+
+def header_lightning(p, peak):
+    kt = 'keyTimes="0;0.52;0.545;0.57;0.585;0.61;1" dur="9s" repeatCount="indefinite"'
+    bolt = 'd="M6 0 L-5 26 L4 24 L-10 56 M-1 19 L-15 31" fill="none" stroke-linecap="round"'
+    return (f'<rect x="0" y="0" width="{HEADER_W}" height="{HEADER_H}" fill="{p["flash"]}" opacity="0"><animate attributeName="opacity" values="0;0;{peak};0;{peak / 2};0;0" {kt}/></rect>'
+            f'<g transform="translate(672,66)" opacity="0"><animate attributeName="opacity" values="0;0;1;0;0.5;0;0" {kt}/>'
+            f'<path {bolt} stroke="{p["bolt"]}" stroke-width="6" opacity="0.3"/><path {bolt} stroke="{p["bolt"]}" stroke-width="2.4"/></g>')
+
+
+def header_leaves(rnd, cols):
+    out = []
+    for _ in range(3):
+        px, drift = rnd.uniform(80, HEADER_W - 80), rnd.choice([-1, 1]) * rnd.uniform(24, 48)
+        dur, beg = rnd.uniform(9, 13), rnd.uniform(0, 6)
+        out.append(f'<g transform="translate({px:.0f},-12)" opacity="0">'
+                   f'<animate attributeName="opacity" values="0;0.8;0.8;0" keyTimes="0;0.1;0.8;1" dur="{dur:.1f}s" begin="{beg:.1f}s" repeatCount="indefinite"/>'
+                   f'<g><animateTransform attributeName="transform" type="translate" values="0 0;{drift:.0f} 160;{drift * 2:.0f} 320" keyTimes="0;0.5;1" dur="{dur:.1f}s" begin="{beg:.1f}s" repeatCount="indefinite"/>'
+                   f'<path d="M0 0 Q-10.5 -4.5 -13.5 -15 Q-4.5 -12 0 0 Z" fill="{rnd.choice(cols)}">'
+                   f'<animateTransform attributeName="transform" type="rotate" values="0;170;350" keyTimes="0;0.5;1" dur="{dur:.1f}s" begin="{beg:.1f}s" repeatCount="indefinite"/></path></g></g>')
+    return "".join(out)
+
+
+def header_fireflies(rnd, col):
+    out = []
+    for (x, y) in [(250, 226), (392, 258), (548, 240), (668, 270), (300, 276)]:
+        dur, beg = rnd.uniform(2.6, 4.2), rnd.uniform(0, 3)
+        out.append(f'<g transform="translate({x},{y})"><g>'
+                   f'<animateTransform attributeName="transform" type="translate" values="0 3;0 -7;0 3" {SPLINE2} dur="{dur:.1f}s" begin="{beg:.1f}s" repeatCount="indefinite"/>'
+                   f'<circle r="2" fill="{col}" opacity="0"><animate attributeName="opacity" values="0;0.85;0" keyTimes="0;0.5;1" dur="{dur:.1f}s" begin="{beg:.1f}s" repeatCount="indefinite"/></circle></g></g>')
+    return "".join(out)
+
+
+def header_layer(w, s, theme):
+    p = HEADER_PAL[theme]
+    rnd = random.Random(f"header-{w}-{s}-{theme}")
+    night = theme == "night"
+    out = []
+    if w in ("rain", "storm"):
+        out.append(header_fade_mask())
+    if night and w in ("clear", "clouds"):
+        out.append(stars(14 if w == "clear" else 7, 30, 800, 10, 96, f"header-{w}-{s}"))
+    # the sky's light source: bright when clear, peeking through clouds, a haze in fog, gone in rain
+    light = {"clear": 1.0, "clouds": 1.0, "fog": 0.5, "snow": 0.5 if night else 0.0}.get(w, 0.0)
+    if light:
+        out.append(header_moon(p, light) if night else header_sun(p, light))
+    if w in HEADER_CLOUDS:
+        cols = p["cloud"] if w == "clouds" else p[f"cloud_{w}"]
+        out.append("".join(header_cloud(x, y, sc, cols, op, sway, dur, beg) for (x, y, sc, op, sway, dur, beg) in HEADER_CLOUDS[w]))
+    if w == "storm":
+        out.append(header_lightning(p, 0.14 if night else 0.22))
+    if w == "rain":
+        out.append(header_rain(rnd, p["rain"], 34, 1.3, 3, 12, (1.1, 1.5), 0.6))
+    if w == "storm":
+        out.append(header_rain(rnd, p["rain_heavy"], 54, 1.5, 5, 15, (0.8, 1.1), 0.65))
+    if w == "snow":
+        out.append(header_snow(rnd, p))
+    if w == "fog":
+        out.append(header_fog(p["fog"]))
+    if s == "autumn" and w in ("clear", "clouds"):
+        out.append(header_leaves(rnd, p["leaf"]))
+    if night and s == "summer" and w in ("clear", "clouds"):
+        out.append(header_fireflies(rnd, p["firefly"]))
+    return "".join(out)
+
+
+def header_canvas(src):
+    """(width, height) the header declares, so the 900x300 layout can be scaled to it."""
+    m = re.search(r'viewBox="\s*[-\d.]+\s+[-\d.]+\s+([\d.]+)\s+([\d.]+)', src)
+    if m:
+        return float(m.group(1)), float(m.group(2))
+    w = re.search(r'<svg[^>]*\swidth="([\d.]+)', src)
+    h = re.search(r'<svg[^>]*\sheight="([\d.]+)', src)
+    return (float(w.group(1)), float(h.group(1))) if w and h else (HEADER_W, HEADER_H)
+
+
+def painted_state(src):
+    """The scene currently painted into a header, e.g. "rain-autumn", or "" if none."""
+    m = re.search(r"<!--WEATHER (\S+) day-->", src)
+    return m.group(1) if m else ""
+
+
+def paint_header(src, w, s):
+    """Return (day, night) headers with the weather layer between the markers.
+    The night file is derived from the day source: NIGHT_MAP colours, night layer."""
+    if not MARK.search(src):
+        raise SystemExit("header has no <!--WEATHER--><!--/WEATHER--> block to paint into")
+    cw, ch = header_canvas(src)
+    sx, sy = cw / HEADER_W, ch / HEADER_H
+
+    def block(theme):
+        inner = header_layer(w, s, theme)
+        if (sx, sy) != (1.0, 1.0):
+            inner = f'<g transform="scale({sx:.4f},{sy:.4f})">{inner}</g>'
+        return f"<!--WEATHER {w}-{s} {theme}-->{inner}<!--/WEATHER-->"
+
+    day = MARK.sub(lambda _: block("day"), src, count=1)
+    night = MARK.sub(lambda _: block("night"), nightify(src), count=1)
+    night = night.replace("</title>", "</title>\n  <!-- generated from the day header by living-scene; edit that file instead -->", 1)
+    return day, night
+
+
 # ---------------- footer ----------------
 SEASON_CFG = {
     "spring": dict(greens=["#7FA36B", "#8CB07A", "#A8C79A"], daisies=4, fireflies=5, ground=("#FBC7B3", 0.2)),
@@ -728,6 +948,12 @@ def parse_args(argv=None):
                    help="file holding the last rendered scene, used to skip no-op commits")
     p.add_argument("--force", action="store_true",
                    help="re-render even when the scene is unchanged")
+    p.add_argument("--header", type=Path, default=env("SCENE_HEADER", Path),
+                   help="an SVG of yours with a <!--WEATHER--><!--/WEATHER--> block; the weather is painted into it in place")
+    p.add_argument("--header-night", type=Path, default=env("SCENE_HEADER_NIGHT", Path),
+                   help="where the night variant of --header is written (default: <header>-night.svg)")
+    p.add_argument("--skip-sky", action="store_true", default=env("SCENE_SKY", str, "true") == "false",
+                   help="do not write the standalone sky strip (use with --header)")
     return p.parse_args(argv)
 
 
@@ -755,16 +981,25 @@ def main(argv=None):
     w = resolve_weather(args, previous)
     s = args.season or current_season(args.tz, args.hemisphere)
     state = f"{w}-{s}"
-    changed = state != previous or args.force
+    header_src = args.header.read_text() if args.header else None
+    # a header whose painted scene lags the state file (freshly added markers, an
+    # edited banner) gets repainted even when the weather itself has not moved
+    changed = state != previous or args.force or (header_src is not None and painted_state(header_src) != state)
 
     if changed:
         args.out_dir.mkdir(parents=True, exist_ok=True)
-        day, night = gen_sky(w, s)
-        (args.out_dir / "sky.svg").write_text(day)
-        (args.out_dir / "sky-night.svg").write_text(night)
+        if not args.skip_sky:
+            day, night = gen_sky(w, s)
+            (args.out_dir / "sky.svg").write_text(day)
+            (args.out_dir / "sky-night.svg").write_text(night)
         day, night = gen_footer(w, s)
         (args.out_dir / "garden-footer.svg").write_text(day)
         (args.out_dir / "garden-footer-night.svg").write_text(night)
+        if header_src is not None:
+            day, night = paint_header(header_src, w, s)
+            args.header.write_text(day)
+            night_path = args.header_night or args.header.with_name(args.header.stem + "-night" + args.header.suffix)
+            night_path.write_text(night)
         args.state.parent.mkdir(parents=True, exist_ok=True)
         args.state.write_text(state + "\n")
         print(f"scene rendered: {state}")

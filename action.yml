@@ -1,5 +1,5 @@
 name: Living Scene
-description: Render a weather-synced animated SVG sky and seasonal garden footer for your GitHub profile README.
+description: Paint the real weather into your GitHub profile README banner, plus a seasonal garden footer. Animated SVG, zero dependencies.
 author: yuki4266
 
 branding:
@@ -31,8 +31,20 @@ inputs:
     description: Pin the season (spring/summer/autumn/winter) instead of deriving it from the date.
     required: false
     default: ""
+  header:
+    description: "Path to an SVG of yours with a <!--WEATHER--><!--/WEATHER--> block. The live weather is painted into it, and a night variant is written next to it."
+    required: false
+    default: ""
+  header-night:
+    description: "Where to write the night variant of the header. Default: <header>-night.svg."
+    required: false
+    default: ""
+  sky:
+    description: Also render the standalone sky strip (sky.svg, sky-night.svg). Set "false" when you paint into a header instead.
+    required: false
+    default: "true"
   out-dir:
-    description: Directory the four SVGs are written to.
+    description: Directory the sky strip and garden footer are written to.
     required: false
     default: "."
   state:
@@ -77,6 +89,9 @@ runs:
         SCENE_TZ: ${{ inputs.tz }}
         SCENE_HEMISPHERE: ${{ inputs.hemisphere }}
         SCENE_OUT_DIR: ${{ inputs.out-dir }}
+        SCENE_HEADER: ${{ inputs.header }}
+        SCENE_HEADER_NIGHT: ${{ inputs.header-night }}
+        SCENE_SKY: ${{ inputs.sky }}
         SCENE_STATE: ${{ inputs.state }}
         WEATHER: ${{ inputs.weather }}
         SEASON: ${{ inputs.season }}

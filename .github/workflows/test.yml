@@ -38,6 +38,27 @@ jobs:
           done
           echo "all four SVGs rendered"
 
+  header:
+    # header mode: the weather lands inside the banner, no sky strip is written
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cp examples/header.svg /tmp/header.svg
+      - uses: ./
+        with:
+          weather: rain
+          season: autumn
+          header: /tmp/header.svg
+          sky: "false"
+          out-dir: /tmp/scene
+          state: /tmp/scene/state
+          commit: "false"
+      - run: |
+          grep -q '<!--WEATHER rain-autumn day-->' /tmp/header.svg || { echo "header not painted"; exit 1; }
+          test -s /tmp/header-night.svg || { echo "night header missing"; exit 1; }
+          test ! -e /tmp/scene/sky.svg || { echo "sky strip should be skipped"; exit 1; }
+          echo "header mode verified"
+
   commit-path:
     # exercises the commit+push branch against a throwaway local remote, so a
     # first run into a repo that has no SVGs yet is covered

@@ -71,6 +71,69 @@ class StateFile(unittest.TestCase):
             self.assertEqual((tmp / "state").read_text().strip(), "storm-winter")
 
 
+class HeaderMode(unittest.TestCase):
+    BANNER = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 300"><title>t</title>'
+              '<!--WEATHER--><!--/WEATHER--><circle r="4" fill="#E8603C"/></svg>')
+
+    def paint(self, tmp, banner=BANNER, **kw):
+        header = tmp / "header.svg"
+        header.write_text(banner)
+        argv = ["--out-dir", str(tmp), "--state", str(tmp / "state"), "--header", str(header), "--skip-sky",
+                "--weather", kw.get("weather", "rain"), "--season", kw.get("season", "autumn")]
+        run(argv)
+        return header.read_text(), (tmp / "header-night.svg").read_text()
+
+    def test_weather_is_painted_between_the_markers(self):
+        with tempfile.TemporaryDirectory() as d:
+            day, night = self.paint(Path(d))
+            self.assertIn("<!--WEATHER rain-autumn day-->", day)
+            self.assertIn("<!--WEATHER rain-autumn night-->", night)
+            self.assertIn("wx-fade", day)  # rain drops are masked
+            for svg in (day, night):
+                ET.fromstring(svg)
+                self.assertIn('<circle r="4"', svg)  # the rest of the banner survives
+
+    def test_night_maps_the_palette(self):
+        with tempfile.TemporaryDirectory() as d:
+            day, night = self.paint(Path(d))
+            self.assertIn("#E8603C", day)
+            self.assertIn(g.NIGHT_MAP["#E8603C"], night)
+            self.assertIn("nightmoon", self.paint(Path(d), weather="clear")[1])
+
+    def test_repaint_replaces_rather_than_appends(self):
+        with tempfile.TemporaryDirectory() as d:
+            tmp = Path(d)
+            day, _ = self.paint(tmp)
+            day2, _ = self.paint(tmp, banner=day, weather="snow")
+            self.assertEqual(day2.count("<!--WEATHER"), 1)
+            self.assertIn("<!--WEATHER snow-autumn day-->", day2)
+            self.assertNotIn("wx-fade", day2)
+
+    def test_stale_header_is_repainted_even_when_state_is_unchanged(self):
+        with tempfile.TemporaryDirectory() as d:
+            tmp = Path(d)
+            (tmp / "state").write_text("rain-autumn\n")  # scene already recorded...
+            day, _ = self.paint(tmp)                      # ...but the banner has empty markers
+            self.assertIn("<!--WEATHER rain-autumn day-->", day)
+
+    def test_other_canvas_sizes_are_scaled(self):
+        banner = self.BANNER.replace('viewBox="0 0 900 300"', 'viewBox="0 0 1800 300"')
+        with tempfile.TemporaryDirectory() as d:
+            day, _ = self.paint(Path(d), banner=banner)
+            self.assertIn('scale(2.0000,1.0000)', day)
+
+    def test_banner_without_markers_fails_loudly(self):
+        with tempfile.TemporaryDirectory() as d:
+            with self.assertRaises(SystemExit):
+                self.paint(Path(d), banner='<svg xmlns="http://www.w3.org/2000/svg"/>')
+
+    def test_skip_sky_writes_no_strip(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.paint(Path(d))
+            self.assertFalse((Path(d) / "sky.svg").exists())
+            self.assertTrue((Path(d) / "garden-footer.svg").exists())
+
+
 class Seasons(unittest.TestCase):
     def test_hemispheres_are_opposite(self):
         for tz in ("America/New_York", "Australia/Sydney", "UTC"):
