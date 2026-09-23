@@ -6,6 +6,11 @@
 
 **Your README, synced to your actual weather.**
 
+[![Marketplace](https://img.shields.io/badge/GitHub%20Marketplace-Living%20Scene-E2542F?logo=github)](https://github.com/marketplace/actions/living-scene)
+[![Release](https://img.shields.io/github/v/release/yuki4266/living-scene?color=7FA36B)](https://github.com/yuki4266/living-scene/releases)
+[![Tests](https://img.shields.io/github/actions/workflow/status/yuki4266/living-scene/test.yml?label=tests)](https://github.com/yuki4266/living-scene/actions/workflows/test.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-8b949e)](LICENSE)
+
 Every few hours a GitHub Action asks Open-Meteo what the sky looks like where you
 live, and repaints your profile banner to match. Rain outside means rain on your
 README. One Python file, zero dependencies, nothing to sign up for.
@@ -55,6 +60,12 @@ jump for it, gives up, sits, stretches, and bolts off-screen.
 ---
 
 ## Quick start
+
+> **Fastest:** [use the template](https://github.com/yuki4266/living-scene-template/generate). It contains the banner,
+> the workflow and pre-rendered day/night files. Rename the new repo to your username, change
+> the name in `header.svg` and the coordinates in the workflow, run it once. Done.
+
+Or by hand:
 
 **1.** Put a banner in your profile repo (the one named after your username).
 Copy [`examples/header.svg`](examples/header.svg) as `header.svg` and change the
@@ -137,6 +148,12 @@ strip instead (`sky.svg`, `sky-night.svg`), which you place under your banner:
 </picture>
 ```
 </details>
+
+## Gardens in the wild
+
+- [yuki4266](https://github.com/yuki4266) — Durham, NC. Coral flowers, a cat in the footer.
+
+Installed it? Post yours in [Show your garden](https://github.com/yuki4266/living-scene/discussions/1) and it gets added here.
 
 ## Running it locally
 
