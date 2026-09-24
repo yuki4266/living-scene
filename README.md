@@ -191,7 +191,7 @@ Action uses under the hood.
 | `--lat` | `SCENE_LAT` | `40.7128` | Latitude for the weather lookup |
 | `--lon` | `SCENE_LON` | `-74.0060` | Longitude for the weather lookup |
 | `--tz` | `SCENE_TZ` | `America/New_York` | IANA timezone, used to pick the season |
-| `--hemisphere` | `SCENE_HEMISPHERE` | `north` | `south` flips the season mapping |
+| `--hemisphere` | `SCENE_HEMISPHERE` | `auto` | Negative latitude selects south; zero or positive selects north. `north`/`south` override this |
 | `--weather` | — | *(live)* | Pin to `clear`/`clouds`/`rain`/`snow`/`fog`/`storm` |
 | `--season` | — | *(from date)* | Pin to `spring`/`summer`/`autumn`/`winter` |
 | `--header` | `SCENE_HEADER` | *(none)* | Your SVG with a `<!--WEATHER--><!--/WEATHER-->` block; painted in place |
@@ -201,7 +201,7 @@ Action uses under the hood.
 | `--state` | `SCENE_STATE` | `.github/scene-state` | Records the last scene, so nothing changes when nothing changed |
 | `--force` | — | off | Re-render even if unchanged |
 
-Southern hemisphere, in full:
+Southern hemisphere, inferred from the latitude:
 
 ```yaml
       - uses: yuki4266/living-scene@v1
@@ -209,7 +209,6 @@ Southern hemisphere, in full:
           lat: "-33.87"
           lon: "151.21"
           tz: Australia/Sydney
-          hemisphere: south
 ```
 
 ## How it works

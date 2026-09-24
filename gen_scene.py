@@ -94,7 +94,9 @@ def fetch_weather(lat, lon):
     return "clear"
 
 
-def current_season(tz, hemisphere="north"):
+def current_season(tz, hemisphere="auto", lat=DEFAULT_LAT):
+    if hemisphere == "auto":
+        hemisphere = "south" if lat < 0 else "north"
     m = datetime.now(ZoneInfo(tz)).month
     if hemisphere == "south":
         m = (m + 5) % 12 + 1  # shift six months: March in Sydney is autumn
@@ -935,9 +937,9 @@ def parse_args(argv=None):
                    help="longitude for the weather lookup")
     p.add_argument("--tz", default=env("SCENE_TZ", str, DEFAULT_TZ),
                    help="IANA timezone used to decide the season")
-    p.add_argument("--hemisphere", choices=("north", "south"),
-                   default=env("SCENE_HEMISPHERE", str, "north"),
-                   help="flips the season mapping for southern-hemisphere users")
+    p.add_argument("--hemisphere", choices=("auto", "north", "south"),
+                   default=env("SCENE_HEMISPHERE", str, "auto"),
+                   help="derive the hemisphere from latitude (auto), or override it explicitly")
     p.add_argument("--weather", choices=WEATHERS,
                    help="pin the weather instead of calling Open-Meteo")
     p.add_argument("--season", choices=SEASONS,
@@ -979,7 +981,7 @@ def main(argv=None):
         previous = ""
 
     w = resolve_weather(args, previous)
-    s = args.season or current_season(args.tz, args.hemisphere)
+    s = args.season or current_season(args.tz, args.hemisphere, args.lat)
     state = f"{w}-{s}"
     header_src = args.header.read_text() if args.header else None
     # a header whose painted scene lags the state file (freshly added markers, an
