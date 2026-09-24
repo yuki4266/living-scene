@@ -2,6 +2,7 @@
 """Stdlib-only tests. Run with: python3 -m unittest -v"""
 import contextlib
 import io
+import os
 import tempfile
 import unittest
 import xml.etree.ElementTree as ET
@@ -135,6 +136,39 @@ class HeaderMode(unittest.TestCase):
 
 
 class Seasons(unittest.TestCase):
+    def test_render_uses_latitude_and_respects_explicit_overrides(self):
+        cases = [({}, "summer"), ({"hemisphere": "north"}, "winter"),
+                 ({"season": "autumn"}, "autumn")]
+        with mock.patch.dict(os.environ, {}, clear=True), mock.patch.object(g, "datetime") as clock:
+            clock.now.return_value.month = 1
+            for options, expected in cases:
+                with self.subTest(options=options), tempfile.TemporaryDirectory() as d:
+                    render(Path(d), weather="clear", lat=-33.87, tz="UTC", **options)
+                    self.assertEqual((Path(d) / "state").read_text().strip(), f"clear-{expected}")
+
+    def test_auto_uses_latitude_in_every_month(self):
+        opposite = {"spring": "autumn", "autumn": "spring",
+                    "summer": "winter", "winter": "summer"}
+        months = ("winter", "winter", "spring", "spring", "spring", "summer",
+                  "summer", "summer", "autumn", "autumn", "autumn", "winter")
+        with mock.patch.object(g, "datetime") as clock:
+            for month, north in enumerate(months, 1):
+                clock.now.return_value.month = month
+                for lat, expected in ((40.7, north), (0, north), (-33.87, opposite[north])):
+                    with self.subTest(month=month, lat=lat):
+                        self.assertEqual(g.current_season("UTC", lat=lat), expected)
+                        self.assertEqual(g.current_season("UTC", "auto", lat), expected)
+                self.assertEqual(g.current_season("UTC", "north", -33.87), north)
+                self.assertEqual(g.current_season("UTC", "south", 40.7), opposite[north])
+
+    def test_auto_is_default_and_explicit_overrides_remain_available(self):
+        with mock.patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(g.parse_args([]).hemisphere, "auto")
+            for value in ("auto", "north", "south"):
+                self.assertEqual(g.parse_args(["--hemisphere", value]).hemisphere, value)
+                with mock.patch.dict(os.environ, {"SCENE_HEMISPHERE": value}):
+                    self.assertEqual(g.parse_args([]).hemisphere, value)
+
     def test_hemispheres_are_opposite(self):
         for tz in ("America/New_York", "Australia/Sydney", "UTC"):
             with self.subTest(tz=tz):

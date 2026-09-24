@@ -20,9 +20,9 @@ inputs:
     required: false
     default: America/New_York
   hemisphere:
-    description: "north or south — flips the season mapping."
+    description: "auto derives north/south from latitude (zero is north); north or south overrides it."
     required: false
-    default: north
+    default: auto
   weather:
     description: Pin the weather (clear/clouds/rain/snow/fog/storm) instead of calling the API.
     required: false
