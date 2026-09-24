@@ -27,6 +27,12 @@ Weather codes collapse into six states, each painted straight into your banner:
 hovering clouds that drift across the sun, rain that thins out at the soil line,
 snow over the whole scene, mist pooling between the stems, lightning.
 
+Rain follows the reported intensity: drizzle and light rain (WMO 51–57, 61)
+use fewer, thinner drops than heavier rain and showers (63–67, 80–82), in both
+the banner and sky strip. Both remain the `rain` state. Pinning `--weather rain`
+uses the heavier appearance; an unavailable weather lookup keeps the last
+rendered intensity.
+
 | | |
 |---|---|
 | **Clear** <br> <img src="previews/header-clear.svg" width="400" alt="clear" /> | **Clouds** <br> <img src="previews/header-clouds.svg" width="400" alt="clouds" /> |

@@ -153,15 +153,66 @@ class WeatherCodes(unittest.TestCase):
             with self.subTest(code=code), mock.patch.object(
                 g.urllib.request, "urlopen", return_value=FakeResponse(code)
             ):
-                self.assertEqual(g.fetch_weather(0, 0), expected)
+                self.assertEqual(g.fetch_weather(0, 0)[0], expected)
 
     def test_unreachable_api_falls_back_to_last_scene(self):
         args = g.parse_args([])
         with mock.patch.object(g.urllib.request, "urlopen",
                                side_effect=OSError("connection refused")):
             with contextlib.redirect_stdout(io.StringIO()):
-                self.assertEqual(g.resolve_weather(args, "snow-winter"), "snow")
-                self.assertEqual(g.resolve_weather(args, ""), "clear")
+                self.assertEqual(g.resolve_weather(args, "snow-winter"), ("snow", None))
+                self.assertEqual(g.resolve_weather(args, ""), ("clear", None))
+
+
+class RainIntensity(unittest.TestCase):
+    def test_wmo_intensity(self):
+        for code in (51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82):
+            with self.subTest(code=code), mock.patch.object(
+                g.urllib.request, "urlopen", return_value=FakeResponse(code)
+            ):
+                self.assertEqual(g.fetch_weather(0, 0),
+                                 ("rain", "light" if code <= 61 else "heavy"))
+
+    def test_drops_are_fewer_and_thinner_in_both_themes(self):
+        ns = {"s": "http://www.w3.org/2000/svg"}
+        for generate in (lambda intensity: g.gen_sky("rain", "summer", intensity),
+                         lambda intensity: g.paint_header(HeaderMode.BANNER, "rain", "summer", intensity)):
+            light, heavy = generate("light"), generate("heavy")
+            self.assertEqual(light, generate("light"))
+            self.assertEqual(heavy, generate("heavy"))
+            for a, b in zip(light, heavy):
+                def drops(svg):
+                    return [float(e.attrib["stroke-width"]) for e in ET.fromstring(svg).findall(".//s:line", ns)
+                            if "stroke-width" in e.attrib]
+                small, large = drops(a), drops(b)
+                self.assertLess(len(small), len(large))
+                self.assertLess(max(small), max(large))
+
+    def test_intensity_changes_repaint_without_changing_public_state(self):
+        for header_mode in (False, True):
+            with self.subTest(header=header_mode), tempfile.TemporaryDirectory() as d:
+                tmp = Path(d)
+                argv = ["--season", "summer", "--out-dir", d, "--state", str(tmp / "state")]
+                target = tmp / "sky.svg"
+                if header_mode:
+                    target = tmp / "header.svg"
+                    target.write_text(HeaderMode.BANNER)
+                    argv += ["--header", str(target), "--skip-sky"]
+                for code, intensity in ((51, "light"), (65, "heavy"), (51, "light")):
+                    with mock.patch.object(g.urllib.request, "urlopen", return_value=FakeResponse(code)):
+                        run(argv)
+                    self.assertIn(f"<!--RAIN {intensity}-->", target.read_text())
+                    self.assertEqual((tmp / "state").read_text(), "rain-summer\n")
+                    before = target.stat().st_mtime_ns
+                    with mock.patch.object(g.urllib.request, "urlopen", return_value=FakeResponse(code)):
+                        run(argv)
+                    self.assertEqual(target.stat().st_mtime_ns, before)
+                # Failed lookup retains drizzle instead of silently switching to heavy rain.
+                with mock.patch.object(g.urllib.request, "urlopen", side_effect=OSError("offline")):
+                    run(argv)
+                self.assertEqual(target.stat().st_mtime_ns, before)
+                run(argv + ["--weather", "rain"])
+                self.assertIn("<!--RAIN heavy-->", target.read_text())
 
 
 class FakeResponse(io.BytesIO):

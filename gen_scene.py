@@ -82,16 +82,16 @@ def fetch_weather(lat, lon):
     url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=weather_code"
     code = json.load(urllib.request.urlopen(url, timeout=20))["current"]["weather_code"]
     if code >= 95:
-        return "storm"
+        return "storm", None
     if code in (71, 73, 75, 77, 85, 86):
-        return "snow"
+        return "snow", None
     if 51 <= code <= 67 or 80 <= code <= 82:
-        return "rain"
+        return "rain", "light" if code <= 61 else "heavy"
     if code in (45, 48):
-        return "fog"
+        return "fog", None
     if code in (1, 2, 3):
-        return "clouds"
-    return "clear"
+        return "clouds", None
+    return "clear", None
 
 
 def current_season(tz, hemisphere="north"):
@@ -141,14 +141,14 @@ def clouds_for(w, rnd):
     return "".join(cloud_anim(y, sc, cols[0], cols[1], op, dur, beg) for (y, sc, op, dur, beg) in cfg)
 
 
-def rain_anim(rnd, H):
+def rain_anim(rnd, H, intensity="heavy"):
     out = []
-    for _ in range(26):
+    for _ in range(20 if intensity == "light" else 26):
         x = rnd.randint(0, 900)
         dur = rnd.uniform(0.8, 1.2)
         out.append(f'<g><animateTransform attributeName="transform" type="translate" values="0 -14;0 {H + 16}" dur="{dur:.2f}s" begin="{-rnd.uniform(0, 1.2):.2f}s" repeatCount="indefinite"/>'
                    f'<line x1="{x}" y1="0" x2="{x - 3.5}" y2="9" stroke="#8FA8C4" stroke-width="1" stroke-linecap="round" opacity="0.35"/></g>')
-    for _ in range(20):
+    for _ in range(0 if intensity == "light" else 20):
         x = rnd.randint(0, 900)
         dur = rnd.uniform(0.6, 0.95)
         out.append(f'<g><animateTransform attributeName="transform" type="translate" values="0 -20;0 {H + 22}" dur="{dur:.2f}s" begin="{-rnd.uniform(0, 1):.2f}s" repeatCount="indefinite"/>'
@@ -201,10 +201,10 @@ def storm_extras(rnd, H):
             f'<path d="M6 0 L-5 26 L4 24 L-10 56 M-1 19 L-15 31" stroke="#FFE9A8" stroke-width="2.4" fill="none" stroke-linecap="round"/></g>')
 
 
-def weather_layer(w, rnd, H):
+def weather_layer(w, rnd, H, intensity="heavy"):
     out = [clouds_for(w, rnd)]
     if w in ("rain", "storm"):
-        out.append(rain_anim(rnd, H))
+        out.append(rain_anim(rnd, H, intensity))
     if w == "snow":
         out.append(snow_anim(rnd, H))
     if w == "fog":
@@ -530,8 +530,8 @@ def cat_show(season):
 
 
 # ---------------- sky ----------------
-def gen_sky(w, s):
-    rnd = random.Random(f"sky-{w}-{s}")
+def gen_sky(w, s, intensity="heavy"):
+    rnd = random.Random(f"sky-{w}-{s}" + (f"-{intensity}" if w == "rain" else ""))
     H = 70
     base = ['<defs><path id="spet" d="M0 0 C-4 -5 -4 -13 0 -17 C4 -13 4 -5 0 0 Z"/>'
             '<path id="sleaf" d="M0 0 Q-7 -3 -9 -10 Q-3 -8 0 0 Z"/></defs>']
@@ -566,7 +566,9 @@ def gen_sky(w, s):
         base.append(drifting("spet", 2, ["#FBC7B3", "#F4795B"]))
     if s == "autumn":
         base.append(drifting("sleaf", 4, ["#C46A38", "#D98E4A", "#B57B3F"]))
-    base.append(weather_layer(w, rnd, H))
+    if w == "rain":
+        base.append(f"<!--RAIN {intensity}-->")
+    base.append(weather_layer(w, rnd, H, intensity))
     if s in ("spring", "summer") and w in ("clear", "clouds"):
         base.append(butterfly_patrol("M880 30 C700 60 560 5 420 40 C300 68 160 15 20 38 C160 62 340 20 520 50 C680 72 800 45 880 30", 15))
     base.append(f'<text x="893" y="64" text-anchor="end" font-size="9" letter-spacing="1.5" fill="#8b949e">LIVE SKY · {w.upper()} · {s.upper()}</text>')
@@ -728,9 +730,9 @@ def header_fireflies(rnd, col):
     return "".join(out)
 
 
-def header_layer(w, s, theme):
+def header_layer(w, s, theme, intensity="heavy"):
     p = HEADER_PAL[theme]
-    rnd = random.Random(f"header-{w}-{s}-{theme}")
+    rnd = random.Random(f"header-{w}-{s}-{theme}" + (f"-{intensity}" if w == "rain" else ""))
     night = theme == "night"
     out = []
     if w in ("rain", "storm"):
@@ -747,7 +749,9 @@ def header_layer(w, s, theme):
     if w == "storm":
         out.append(header_lightning(p, 0.14 if night else 0.22))
     if w == "rain":
-        out.append(header_rain(rnd, p["rain"], 34, 1.3, 3, 12, (1.1, 1.5), 0.6))
+        out.append(f"<!--RAIN {intensity}-->")
+        n, width = (20, 1.0) if intensity == "light" else (34, 1.3)
+        out.append(header_rain(rnd, p["rain"], n, width, 3, 12, (1.1, 1.5), 0.6))
     if w == "storm":
         out.append(header_rain(rnd, p["rain_heavy"], 54, 1.5, 5, 15, (0.8, 1.1), 0.65))
     if w == "snow":
@@ -777,7 +781,7 @@ def painted_state(src):
     return m.group(1) if m else ""
 
 
-def paint_header(src, w, s):
+def paint_header(src, w, s, intensity="heavy"):
     """Return (day, night) headers with the weather layer between the markers.
     The night file is derived from the day source: NIGHT_MAP colours, night layer."""
     if not MARK.search(src):
@@ -786,7 +790,7 @@ def paint_header(src, w, s):
     sx, sy = cw / HEADER_W, ch / HEADER_H
 
     def block(theme):
-        inner = header_layer(w, s, theme)
+        inner = header_layer(w, s, theme, intensity)
         if (sx, sy) != (1.0, 1.0):
             inner = f'<g transform="scale({sx:.4f},{sy:.4f})">{inner}</g>'
         return f"<!--WEATHER {w}-{s} {theme}-->{inner}<!--/WEATHER-->"
@@ -961,13 +965,13 @@ def resolve_weather(args, previous):
     """Pinned weather wins; otherwise ask Open-Meteo, and degrade to the last
     known scene rather than failing the whole run when the API is unreachable."""
     if args.weather:
-        return args.weather
+        return args.weather, "heavy" if args.weather == "rain" else None
     try:
         return fetch_weather(args.lat, args.lon)
     except Exception as exc:  # network, timeout, malformed payload
         fallback = previous.split("-")[0] if "-" in previous else "clear"
         print(f"weather lookup failed ({exc}); falling back to {fallback}")
-        return fallback
+        return fallback, None
 
 
 def main(argv=None):
@@ -978,25 +982,38 @@ def main(argv=None):
     except OSError:
         previous = ""
 
-    w = resolve_weather(args, previous)
+    w, intensity = resolve_weather(args, previous)
     s = args.season or current_season(args.tz, args.hemisphere)
     state = f"{w}-{s}"
     header_src = args.header.read_text() if args.header else None
+    # Keep the public state format unchanged; the SVG records its rain intensity.
+    rain_sources = []
+    if w == "rain":
+        if header_src is not None:
+            rain_sources.append(header_src)
+        if not args.skip_sky:
+            try:
+                rain_sources.append((args.out_dir / "sky.svg").read_text())
+            except OSError:
+                rain_sources.append("")
+        if intensity is None:  # retain the last intensity during an API outage
+            intensity = "light" if any("<!--RAIN light-->" in src for src in rain_sources) else "heavy"
+    rain_changed = any(f"<!--RAIN {intensity}-->" not in src for src in rain_sources)
     # a header whose painted scene lags the state file (freshly added markers, an
     # edited banner) gets repainted even when the weather itself has not moved
-    changed = state != previous or args.force or (header_src is not None and painted_state(header_src) != state)
+    changed = state != previous or args.force or rain_changed or (header_src is not None and painted_state(header_src) != state)
 
     if changed:
         args.out_dir.mkdir(parents=True, exist_ok=True)
         if not args.skip_sky:
-            day, night = gen_sky(w, s)
+            day, night = gen_sky(w, s, intensity)
             (args.out_dir / "sky.svg").write_text(day)
             (args.out_dir / "sky-night.svg").write_text(night)
         day, night = gen_footer(w, s)
         (args.out_dir / "garden-footer.svg").write_text(day)
         (args.out_dir / "garden-footer-night.svg").write_text(night)
         if header_src is not None:
-            day, night = paint_header(header_src, w, s)
+            day, night = paint_header(header_src, w, s, intensity)
             args.header.write_text(day)
             night_path = args.header_night or args.header.with_name(args.header.stem + "-night" + args.header.suffix)
             night_path.write_text(night)
